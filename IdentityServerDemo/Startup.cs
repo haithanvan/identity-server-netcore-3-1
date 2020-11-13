@@ -2,7 +2,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
-using IdentityServerDemo.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,100 +10,103 @@ using Api;
 using Microsoft.AspNetCore.Http;
 using IdentityServerDemo.Services;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Nmb.Shared.Identity;
+using System;
+using AuthenticationSettings = Nmb.Shared.Identity.AuthenticationSettings;
+using IdentityServerDemo.Domain.AccountAggregate;
+using IdentityServerDemo.Helpers;
+using IdentityServerDemo.ExternalAuth;
+using Microsoft.AspNetCore.DataProtection;
+using System.IO;
+using AspNet.Security.OpenIdConnect.Primitives;
+using Nmb.Shared.Constants;
+using IdentityServerDemo.Infrastructure;
+using Microsoft.Extensions.Options;
+using Nmb.Shared.Localization;
 
 namespace IdentityServerDemo
 {
     public class Startup
     {
-        public Startup(IConfiguration configuration)
+        public Startup(IConfiguration configuration, IWebHostEnvironment hostingEnv)
         {
             Configuration = configuration;
+            _hostingEnv = hostingEnv;
         }
 
         public static readonly string AssemblyName = typeof(Startup).GetTypeInfo().Assembly.GetName().Name;
 
         public IConfiguration Configuration { get; }
+        private readonly IWebHostEnvironment _hostingEnv;
 
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddDbContext<ApplicationDbContext>(options =>
-               options
-                   .UseNpgsql(Configuration.GetConnectionString("DefaultConnection"), b =>
+            services.AddCustomDbContext(Configuration)
+                    .AddIoC(Configuration);
+
+            services
+                    .AddIdentity<Account, Role>()
+                    .AddEntityFrameworkStores<ApplicationDbContext>()
+                    .AddDefaultTokenProviders();
+
+            services.AddIdentityServer()
+               .AddAspNetIdentity<Account>()
+               .AddResourceOwnerValidator<ResourceOwnerPasswordValidator>()
+               .AddCertificate(Configuration, !_hostingEnv.IsProduction())
+               .AddConfigurationStore(opts =>
+               {
+                   opts.ConfigureDbContext = co => co.UseNpgsql(Configuration.GetConnectionString(ConfigurationKeys.DefaultConnectionString), pg =>
                    {
-                       b.MigrationsAssembly(AssemblyName);
-                       b.MigrationsHistoryTable("__EFMigrationsHistory");
-                   }));
-
-            services.AddIdentity<IdentityUser, IdentityRole>()
-                .AddEntityFrameworkStores<ApplicationDbContext>()
-                .AddDefaultTokenProviders();
-
-            services
-                .AddIdentityServer(options =>
-                {
-                    options.Events.RaiseErrorEvents = true;
-                    options.Events.RaiseInformationEvents = true;
-                    options.Events.RaiseFailureEvents = true;
-                    options.Events.RaiseSuccessEvents = true;
-                    // see https://identityserver4.readthedocs.io/en/latest/topics/resources.html
-                    options.EmitStaticAudienceClaim = true;
-                })
-                .AddInMemoryIdentityResources(Config.IdentityResources)
-                .AddInMemoryApiScopes(Config.ApiScopes)
-                .AddInMemoryApiResources(Config.ApiResources)
-                .AddInMemoryClients(Config.Clients)
-                .AddAspNetIdentity<IdentityUser>()
-                .AddJwtBearerClientAuthentication()
-                .AddProfileService<ProfileService>()
-                .AddResourceOwnerValidator<ResourceOwnerPasswordValidator>()
-                .AddDeveloperSigningCredential();
-
-            services
-                .AddAuthentication()
-                .AddFacebook(options =>
-                    {
-                        options.AppId = Configuration["Authentication:Facebook:AppId"];
-                        options.AppSecret = Configuration["Authentication:Facebook:AppSecret"];
-                        options.Events.OnRemoteFailure = (context =>
-                        {
-                            context.Response.Redirect(context.Properties.RedirectUri);
-                            context.HandleResponse();
-                            return Task.CompletedTask;
-                        });
-                    })
-                .AddGoogle(options =>
-                {
-                    options.ClientId = Configuration["Authentication:Google:ClientId"];
-                    options.ClientSecret = Configuration["Authentication:Google:ClientSecret"];
-                    options.Events.OnRemoteFailure = (context =>
-                    {
-                        context.Response.Redirect(context.Properties.RedirectUri);
-                        context.HandleResponse();
-                        return Task.CompletedTask;
-                    });
-                })
-                .AddIdentityServerAuthentication(options =>
-                {
-                    var settings = Configuration.GetSection("Authentication").Get<AuthenticationSettings>();
-                    options.Authority = settings.Authority;
-                    options.RequireHttpsMetadata = settings.RequireHttpsMetadata;
-                    options.ApiName = settings.ApiName;
-                    options.ApiSecret = settings.ApiSecret;
-                });
-            services.ConfigureApplicationCookie(options =>
+                       pg.MigrationsAssembly(AssemblyName);
+                       pg.MigrationsHistoryTable("__EFMigrationsHistory", ApplicationDbContext.SchemaName);
+                   });
+                   opts.DefaultSchema = ApplicationDbContext.SchemaName;
+               })
+               .AddOperationalStore(opts =>
+               {
+                   opts.ConfigureDbContext = co => co.UseNpgsql(Configuration.GetConnectionString(ConfigurationKeys.DefaultConnectionString), pg =>
+                   {
+                       pg.MigrationsAssembly(AssemblyName);
+                       pg.MigrationsHistoryTable("__EFMigrationsHistory", ApplicationDbContext.SchemaName);
+                   });
+                   opts.DefaultSchema = ApplicationDbContext.SchemaName;
+                   opts.EnableTokenCleanup = true;
+                   opts.TokenCleanupInterval = 3600;
+               })
+               .AddProfileService<ProfileService>()
+               .AddJwtBearerClientAuthentication();
+            services.Configure<IdentityOptions>(opts =>
             {
-                options.AccessDeniedPath = "/Identity/Account/AccessDenied";
-                options.LoginPath = "/Identity/Account/Login";
-                options.LogoutPath = "/Identity/Account/Logout";
+                opts.Password.RequireDigit = true;
+                opts.Password.RequireLowercase = true;
+                opts.Password.RequireUppercase = true;
+                opts.Password.RequireNonAlphanumeric = false;
+                opts.Password.RequiredUniqueChars = 0;
+                opts.Password.RequiredLength = 8;
+                opts.ClaimsIdentity.UserNameClaimType = OpenIdConnectConstants.Claims.Name;
+                opts.ClaimsIdentity.UserIdClaimType = OpenIdConnectConstants.Claims.Subject;
+                opts.ClaimsIdentity.RoleClaimType = OpenIdConnectConstants.Claims.Role;
+                opts.SignIn.RequireConfirmedEmail = false;
+                opts.User.RequireUniqueEmail = true;
+                opts.Tokens.PasswordResetTokenProvider = TokenOptions.DefaultEmailProvider;
+                opts.Tokens.ChangeEmailTokenProvider = TokenOptions.DefaultEmailProvider;
+                opts.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
+                opts.Lockout.MaxFailedAccessAttempts = 5;
+                opts.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(1);
             });
-            services.AddControllersWithViews();
-            services.AddRazorPages();
+            services.AddDataProtection()
+                .PersistKeysToFileSystem(new DirectoryInfo(Configuration.GetValue<string>("KeyRingPath")));
+            services.AddExternalAuth();
+            services.ConfigureLocalization();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            var options = app.ApplicationServices.GetService<IOptions<RequestLocalizationOptions>>();
+            app.UseRequestLocalization(options.Value);
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -122,7 +124,14 @@ namespace IdentityServerDemo
             // To avoid this problem, the policy of cookies shold be in Lax mode.
             // vì mày mà t mất cả ngày
             app.UseCookiePolicy(new CookiePolicyOptions { MinimumSameSitePolicy = SameSiteMode.Lax }); // 
-
+            app.UseCors(opts =>
+            {
+                opts.AllowAnyHeader();
+                opts.AllowAnyMethod();
+                opts.AllowCredentials();
+                opts.SetIsOriginAllowed(origin => true);
+            });
+            app.UseSession();
             app.UseRouting();
             app.UseIdentityServer();
             app.UseAuthorization();

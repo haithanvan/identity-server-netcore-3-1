@@ -1,7 +1,10 @@
-﻿using IdentityModel;
+﻿using AspNet.Security.OpenIdConnect.Primitives;
+using IdentityModel;
 using IdentityServer4.Models;
 using IdentityServer4.Services;
+using IdentityServerDemo.Domain.AccountAggregate;
 using Microsoft.AspNetCore.Identity;
+using Nmb.Shared.Constants;
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
@@ -13,14 +16,16 @@ namespace IdentityServerDemo.Services
 {
     public class ProfileService : IProfileService
     {
-        private readonly UserManager<IdentityUser> _userManager;
+        private readonly UserManager<Account> _userManager;
+        private readonly IUserClaimsPrincipalFactory<Account> _claimsFactory;
 
-        public ProfileService(UserManager<IdentityUser> userManager)
+        public ProfileService(UserManager<Account> userManager, IUserClaimsPrincipalFactory<Account> claimsFactory)
         {
             _userManager = userManager;
+            _claimsFactory = claimsFactory;
         }
 
-        async public Task GetProfileDataAsync(ProfileDataRequestContext context)
+        public async Task GetProfileDataAsync(ProfileDataRequestContext context)
         {
             var subject = context.Subject ?? throw new ArgumentNullException(nameof(context.Subject));
 
@@ -29,67 +34,65 @@ namespace IdentityServerDemo.Services
             var user = await _userManager.FindByIdAsync(subjectId);
             if (user == null)
                 throw new ArgumentException("Invalid subject identifier");
+            var principal = await _claimsFactory.CreateAsync(user);
+            var reqClaimTypes = context.RequestedClaimTypes.Concat(new[]
+            {
+                OpenIdConnectConstants.Claims.Role,
+            });
 
-            var claims = GetClaimsFromUser(user);
-            context.IssuedClaims = claims.ToList();
+            var claims = principal.Claims.Where(c => reqClaimTypes.Contains(c.Type)).ToList();
+            claims.AddRange(new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(OpenIdConnectConstants.Claims.Username, $"{user.FirstName ?? string.Empty} {user.LastName ?? string.Empty}"),
+                new Claim(JwtClaimTypes.FamilyName, user.LastName ?? string.Empty),
+                new Claim(JwtClaimTypes.GivenName, user.FirstName ?? string.Empty),
+                new Claim(JwtClaimTypes.PhoneNumber, user.PhoneNumber ?? string.Empty),
+                new Claim(JwtClaimTypes.Picture, user.ProfileImageUrl ?? string.Empty),
+                new Claim(JwtClaimTypes.Address, user.Address ?? string.Empty),
+            });
+
+            if (!string.IsNullOrEmpty(user.Email))
+            {
+                claims.Add(new Claim(JwtClaimTypes.Email, user.Email));
+            }
+            if (user.ProfileImageUrl != null)
+            {
+                var profileImageUrl = user.ProfileImageUrl;
+                claims.Add(new Claim(JwtClaimTypes.Picture, profileImageUrl));
+            }
+            context.IssuedClaims = claims;
         }
 
-        async public Task IsActiveAsync(IsActiveContext context)
+        public async Task IsActiveAsync(IsActiveContext context)
         {
-            var subject = context.Subject ?? throw new ArgumentNullException(nameof(context.Subject));
+            var user = await _userManager.GetUserAsync(context.Subject);
 
-            var subjectId = subject.Claims.Where(x => x.Type == "sub").FirstOrDefault().Value;
-            var user = await _userManager.FindByIdAsync(subjectId);
-
-            context.IsActive = false;
-
-            if (user != null)
+            if (user == null)
             {
-                if (_userManager.SupportsUserSecurityStamp)
-                {
-                    var security_stamp = subject.Claims.Where(c => c.Type == "security_stamp").Select(c => c.Value).SingleOrDefault();
-                    if (security_stamp != null)
-                    {
-                        var db_security_stamp = await _userManager.GetSecurityStampAsync(user);
-                        if (db_security_stamp != security_stamp)
-                            return;
-                    }
-                }
+                context.IsActive = false;
+                return;
+            }
+            var clientId = context.Client.ClientId;
+            var roleNames = await _userManager.GetRolesAsync(user);
 
-                context.IsActive =
-                    !user.LockoutEnabled ||
-                    !user.LockoutEnd.HasValue ||
-                    user.LockoutEnd <= DateTime.Now;
+            if (IsClientAllowed(roleNames, clientId))
+            {
+                context.IsActive = user?.IsActive ?? false;
+            }
+            else
+            {
+                context.IsActive = false;
             }
         }
 
-        private IEnumerable<Claim> GetClaimsFromUser(IdentityUser user)
+        private bool IsClientAllowed(IList<string> roleNames, string clientId)
         {
-            var claims = new List<Claim>
-            {
-                new Claim(JwtClaimTypes.Subject, user.Id),
-                new Claim(JwtClaimTypes.PreferredUserName, user.UserName),
-                new Claim(JwtRegisteredClaimNames.UniqueName, user.UserName)
-            };
-            if (_userManager.SupportsUserEmail)
-            {
-                claims.AddRange(new[]
-                {
-                    new Claim(JwtClaimTypes.Email, user.Email),
-                    new Claim(JwtClaimTypes.EmailVerified, user.EmailConfirmed ? "true" : "false", ClaimValueTypes.Boolean)
-                });
-            }
-
-            if (_userManager.SupportsUserPhoneNumber && !string.IsNullOrWhiteSpace(user.PhoneNumber))
-            {
-                claims.AddRange(new[]
-                {
-                    new Claim(JwtClaimTypes.PhoneNumber, user.PhoneNumber),
-                    new Claim(JwtClaimTypes.PhoneNumberVerified, user.PhoneNumberConfirmed ? "true" : "false", ClaimValueTypes.Boolean)
-                });
-            }
-
-            return claims;
+            return
+                   clientId == IdentityConfiguration.WellknownClientId.Mobile && roleNames.Contains(AllRoles.Learner) ||
+                   clientId == IdentityConfiguration.WellknownClientId.Learner && roleNames.Contains(AllRoles.Learner) ||
+                   clientId == IdentityConfiguration.WellknownClientId.Admin && roleNames.Contains(AllRoles.Administrator);
         }
     }
 }
+
