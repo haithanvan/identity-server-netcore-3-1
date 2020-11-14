@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Nmb.Shared.Constants;
 using Nmb.Shared.Initialization;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -25,8 +26,8 @@ namespace IdentityServerDemo.Initializations
             var currentRoles = await _roleManager.Roles.ToListAsync();
             var allRoles = new List<Role>
             {
-                new Role {Name = AllRoles.Administrator},
-                new Role {Name = AllRoles.Mobile}
+                new Role {Id = Guid.NewGuid(), Name = AllRoles.Administrator},
+                new Role {Id = Guid.NewGuid(), Name = AllRoles.Mobile}
             };
             var newRoles = allRoles.Except(currentRoles).ToList();
             foreach (var item in newRoles)

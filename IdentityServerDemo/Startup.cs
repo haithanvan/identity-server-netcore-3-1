@@ -24,6 +24,7 @@ using Nmb.Shared.Constants;
 using IdentityServerDemo.Infrastructure;
 using Microsoft.Extensions.Options;
 using Nmb.Shared.Localization;
+using Nmb.Shared.Mvc.FormUpload;
 
 namespace IdentityServerDemo
 {
@@ -100,6 +101,12 @@ namespace IdentityServerDemo
                 .PersistKeysToFileSystem(new DirectoryInfo(Configuration.GetValue<string>("KeyRingPath")));
             services.AddExternalAuth();
             services.ConfigureLocalization();
+            services.AddSwagger();
+            services.AddMvc(opts =>
+            {
+                opts.AllowUploadLargeFiles();
+            });
+
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -123,6 +130,7 @@ namespace IdentityServerDemo
             // the cookies shoold be expided from https, but in demo project, the internal comunicacion in docker compose is http.
             // To avoid this problem, the policy of cookies shold be in Lax mode.
             // vì mày mà t mất cả ngày
+            app.UseSwaggerUi();
             app.UseCookiePolicy(new CookiePolicyOptions { MinimumSameSitePolicy = SameSiteMode.Lax }); // 
             app.UseCors(opts =>
             {

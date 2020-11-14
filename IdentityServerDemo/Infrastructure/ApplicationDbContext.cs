@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace IdentityServerDemo.Infrastructure
 {
-    public class ApplicationDbContext : IdentityDbContext<Account, Role, string>
+    public class ApplicationDbContext : IdentityDbContext<Account, Role, Guid>
     {
         public const string SchemaName = "identity";
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)

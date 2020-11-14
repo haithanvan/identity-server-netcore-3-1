@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace IdentityServerDemo.Domain.AccountAggregate
 {
-    public class Account : IdentityUser<string>, IAggregateRoot
+    public class Account : IdentityUser<Guid>, IAggregateRoot
     {
         public bool IsActive { get; set; }
         public string FirstName { get; private set; }

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace IdentityServerDemo.Domain.AccountAggregate
 {
-    public class AccountRole : IdentityUserRole<string>
+    public class AccountRole : IdentityUserRole<Guid>
     {
         public virtual Role Role { get; set; }
     }
