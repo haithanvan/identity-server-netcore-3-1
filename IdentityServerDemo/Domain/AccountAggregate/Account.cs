@@ -19,7 +19,7 @@ namespace IdentityServerDemo.Domain.AccountAggregate
         [NotMapped]
         public string FullName => $"{FirstName} {LastName}";
         public virtual IList<AccountRole> UserRoles { get; } = new List<AccountRole>();
-        public virtual IList<IdentityUserLogin<string>> Logins { get; } = new List<IdentityUserLogin<string>>();
+        public virtual IList<IdentityUserLogin<Guid>> Logins { get; } = new List<IdentityUserLogin<Guid>>();
 
         public Account()
         {
