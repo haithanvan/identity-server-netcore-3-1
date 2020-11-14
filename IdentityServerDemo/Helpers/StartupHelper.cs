@@ -1,4 +1,8 @@
-﻿using IdentityServerDemo.Infrastructure;
+﻿using Hangfire;
+using Hangfire.Common;
+using Hangfire.PostgreSql;
+using IdentityServerDemo.Filters;
+using IdentityServerDemo.Infrastructure;
 using IdentityServerDemo.Initializations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -84,6 +88,7 @@ namespace IdentityServerDemo.Helpers
             services.AddTransient<IInitializationStage, MigrateDatabaseInitialization>();
             services.AddTransient<IInitializationStage, SeedRoleInitialization>();
             services.AddTransient<IInitializationStage, SeedClientInitialization>();
+            services.AddScoped<IScopeContext, SystemContext>();
             return services;
         }
         public static IServiceCollection AddCustomAuthentication(this IServiceCollection services, IConfiguration configuration)
@@ -107,18 +112,18 @@ namespace IdentityServerDemo.Helpers
 
             services.AddAuthorization(opts =>
             {
-                //opts.AddPolicy(ElnPlusPolicy.Administrator, policy =>
-                //{
-                //    policy.RequireAuthenticatedUser();
-                //    policy.RequireRole(AllRoles.Administrator);
-                //    policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
-                //});
-                //opts.AddPolicy(ElnPlusPolicy.Learner, policy =>
-                //{
-                //    policy.RequireAuthenticatedUser();
-                //    policy.RequireRole(AllRoles.Web);
-                //    policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
-                //});
+                opts.AddPolicy(NmbPolicy.Administrator, policy =>
+                {
+                    policy.RequireAuthenticatedUser();
+                    policy.RequireRole(AllRoles.Administrator);
+                    policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
+                });
+                opts.AddPolicy(NmbPolicy.Mobile, policy =>
+                {
+                    policy.RequireAuthenticatedUser();
+                    policy.RequireRole(AllRoles.Mobile);
+                    policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
+                });
             });
 
             return services;
@@ -157,6 +162,34 @@ namespace IdentityServerDemo.Helpers
                 c.SwaggerEndpoint("/swagger/v1/swagger.json", "Identity API v1");
                 c.DocumentTitle = "Identity API";
             });
+        }
+
+        public static IServiceCollection AddHangfireService(this IServiceCollection services, IConfiguration configuration)
+        {
+            var connectionString = configuration.GetConnectionString(ConfigurationKeys.ScheduledTasksDbConnectionString);
+            services.AddHangfire(config =>
+            {
+                config.UsePostgreSqlStorage(connectionString, new PostgreSqlStorageOptions()
+                {
+                    SchemaName = "hangfire",
+                    PrepareSchemaIfNecessary = true
+                });
+            });
+
+            services.AddSingleton<IBackgroundJobClient>((x =>
+                new BackgroundJobClient(x.GetRequiredService<JobStorage>(),
+                    x.GetRequiredService<IJobFilterProvider>())));
+            return services;
+        }
+
+        public static IApplicationBuilder UseHangfire(this IApplicationBuilder app)
+        {
+            app.UseHangfireDashboard("/hangfire", new DashboardOptions()
+            {
+                Authorization = new[] { new HangfireAuthorizationFilter() },
+                IgnoreAntiforgeryToken = true
+            });
+            return app;
         }
     }
 }
