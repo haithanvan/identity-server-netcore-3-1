@@ -137,7 +137,7 @@ namespace IdentityServerDemo.Controllers
             }
             var code = await _userManager.GeneratePasswordResetTokenAsync(user);
             //_jobClient.Enqueue<IEmailTask>(t => t.SendForgotPasswordEmail(user.Email, user.FullName, code));
-            return Ok();
+            return Ok(code);
         }
 
         [AllowAnonymous]
