@@ -11,13 +11,13 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   api:
-    image: docker.debugger.vn/api
+    image: haitv/test-api
     build:
       context: .
       dockerfile: Api/Dockerfile
 
   identity-api:
-    image: docker.debugger.vn/identity-api
+    image: haitv/identity-api
     build:
       context: .
       dockerfile: IdentityServerDemo/Dockerfile
