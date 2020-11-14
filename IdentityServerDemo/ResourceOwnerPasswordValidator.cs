@@ -96,8 +96,8 @@ namespace IdentityServerDemo
         private bool IsClientAllowed(IList<string> roleNames, string clientId)
         {
             return
-                   clientId == IdentityConfiguration.WellknownClientId.Mobile && roleNames.Contains(AllRoles.Learner) ||
-                   clientId == IdentityConfiguration.WellknownClientId.Learner && roleNames.Contains(AllRoles.Learner) ||
+                   clientId == IdentityConfiguration.WellknownClientId.Mobile && roleNames.Contains(AllRoles.Mobile) ||
+                   clientId == IdentityConfiguration.WellknownClientId.Learner && roleNames.Contains(AllRoles.Mobile) ||
                    clientId == IdentityConfiguration.WellknownClientId.Admin && roleNames.Contains(AllRoles.Administrator);
         }
     }
