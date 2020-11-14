@@ -139,7 +139,6 @@ namespace IdentityServerDemo
                 opts.AllowCredentials();
                 opts.SetIsOriginAllowed(origin => true);
             });
-            app.UseSession();
             app.UseRouting();
             app.UseIdentityServer();
             app.UseAuthorization();

@@ -10,6 +10,7 @@ namespace IdentityServerDemo.Domain.AccountAggregate
 {
     public class Account : IdentityUser<Guid>, IAggregateRoot
     {
+        //public string MerchantId { get; set; }
         public bool IsActive { get; set; }
         public string FirstName { get; private set; }
         public string LastName { get; private set; }
@@ -71,9 +72,15 @@ namespace IdentityServerDemo.Domain.AccountAggregate
             Address = address;
         }
 
-        public void SetActive(bool active)
+        public void UpdateStatus(bool active)
         {
             IsActive = active;
         }
+
+        public static Account CreateNewAccount(string email, string firstName, string lastName, bool isActive, string profileImageUrl)
+        {
+            return new Account(email, firstName, lastName, profileImageUrl, "", isActive);
+        }
+
     }
 }

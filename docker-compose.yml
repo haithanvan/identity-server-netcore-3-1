@@ -1,7 +1,7 @@
 version: '3.4'
 
 services:
-  postgresql-data:
+  identity-postgresql-data:
     image: postgres:10
     environment:
       POSTGRES_PASSWORD: DigiMed123
